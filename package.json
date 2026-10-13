@@ -1,0 +1,22 @@
+{
+  "name": "market-news-radar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Market Radar: real-time Indian market news intelligence PWA with auto-tagging, impact rating and Web Push alerts.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "build:static": "node scripts/build-static.js",
+    "icons": "node scripts/make-icons.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "fast-xml-parser": "^5.11.2",
+    "web-push": "^3.6.7"
+  }
+}

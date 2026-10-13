@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Market Radar</title>
+  <meta name="description" content="Real-time Indian market news intelligence: auto-tagged, impact-rated and summarised.">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <a class="skip" href="#feed">Skip to feed</a>
+
+  <!-- ===================== TOP BAR ===================== -->
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" opacity=".35"/>
+          <circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" stroke-width="2" opacity=".6"/>
+          <path d="M16 16 L27 8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="16" cy="16" r="2.5" fill="currentColor"/>
+        </svg>
+        <span class="brand-name">MARKET<b>RADAR</b></span>
+        <span class="live" id="liveStatus" title="Connection status"><i></i><span>Connecting</span></span>
+      </div>
+
+      <div class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="search" type="search" placeholder="Search news, tickers, sectors…  ( / )" autocomplete="off" aria-label="Search news">
+        <kbd>/</kbd>
+      </div>
+
+      <div class="top-actions">
+        <button class="btn btn-ghost" id="audioBtn" type="button" title="Read the selected summary aloud">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+          <span class="lbl">Audio Brief</span>
+        </button>
+        <button class="btn btn-primary" id="manualBtn" type="button" title="Analyse pasted text">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="lbl">Manual Post</span>
+        </button>
+        <label class="alert-toggle" title="Native notifications for High impact news">
+          <input type="checkbox" id="alertsToggle" role="switch">
+          <span class="switch"></span>
+          <span class="lbl"><span class="long">Enable Breaking News Alerts</span><span class="short">Alerts</span></span>
+        </label>
+        <button class="btn btn-icon btn-ghost desktop-only" id="settingsBtn" type="button" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <nav class="pills" id="categoryPills" aria-label="Asset class">
+      <button class="pill active" data-cat="All" type="button">All</button>
+      <button class="pill" data-cat="Equities" type="button">Equities</button>
+      <button class="pill" data-cat="Commodities" type="button">Commodities</button>
+      <button class="pill" data-cat="Macro" type="button">Macro</button>
+      <button class="pill" data-cat="Geopolitics" type="button">Geopolitics</button>
+      <span class="pill-sep"></span>
+      <button class="pill pill-high" data-impact="High" type="button">● High Impact</button>
+    </nav>
+
+    <div class="tape" id="tickerTape" aria-label="Live prices"></div>
+  </header>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="layout">
+    <!-- Left: tickers & filter shortcuts -->
+    <aside class="col col-left" id="leftCol" aria-label="Tickers and filters">
+      <section class="panel">
+        <h2 class="panel-title">Tickers in the news</h2>
+        <ul class="ticker-list" id="tickerList"></ul>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">Impact</h2>
+        <div class="shortcuts" id="impactFilters"></div>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">Sentiment</h2>
+        <div class="shortcuts" id="sentimentFilters"></div>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">Sub-sectors</h2>
+        <div class="shortcuts" id="sectorFilters"></div>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">Sources</h2>
+        <div class="shortcuts" id="sourceFilters"></div>
+      </section>
+    </aside>
+
+    <!-- Middle: real-time feed -->
+    <section class="col col-mid" aria-label="News feed">
+      <div class="feed-head">
+        <div>
+          <h1 class="feed-title" id="feedTitle">Live Feed</h1>
+          <div class="feed-meta" id="feedMeta">Loading…</div>
+        </div>
+        <div class="feed-tools">
+          <div class="active-filters" id="activeFilters"></div>
+          <button class="btn btn-ghost btn-sm" id="refreshBtn" type="button" title="Poll feeds now">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8M21 3v5h-5"/></svg>
+            <span class="lbl">Refresh</span>
+          </button>
+        </div>
+      </div>
+      <button class="new-banner" id="newBanner" type="button" hidden></button>
+      <div class="feed" id="feed" tabindex="-1" aria-live="polite"></div>
+    </section>
+
+    <!-- Right: expanded analysis -->
+    <aside class="col col-right" id="detail" aria-label="Article analysis">
+      <div class="detail-empty" id="detailEmpty">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg>
+        <p>Select a story to see its full analysis, key numbers and chart.</p>
+      </div>
+      <article class="detail-body" id="detailBody" hidden></article>
+    </aside>
+
+    <!-- Mobile settings view -->
+    <section class="col col-settings" id="settingsView" hidden aria-label="Settings"></section>
+  </main>
+
+  <!-- ===================== MOBILE BOTTOM NAV ===================== -->
+  <nav class="bottom-nav" id="bottomNav" aria-label="Sections">
+    <button class="active" data-view="feed" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Feed</span>
+    </button>
+    <button data-view="high" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20z"/><path d="M12 10v4M12 17.5v.5"/></svg><span>High-Impact</span><b class="nav-badge" id="highBadge" hidden></b>
+    </button>
+    <button data-view="commodities" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h18l-3-7H6z"/><path d="M8 10 10 5h4l2 5"/></svg><span>Commodities</span>
+    </button>
+    <button data-view="macro" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10h18L12 4zM5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg><span>Macro</span>
+    </button>
+    <button data-view="settings" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>Settings</span>
+    </button>
+  </nav>
+
+  <!-- ===================== MANUAL POST MODAL ===================== -->
+  <dialog class="modal" id="manualModal" aria-labelledby="manualTitle">
+    <form method="dialog" id="manualForm" class="modal-card">
+      <header class="modal-head">
+        <h2 id="manualTitle">+ Manual Post</h2>
+        <button class="btn btn-icon btn-ghost" value="cancel" formnovalidate type="submit" aria-label="Close">✕</button>
+      </header>
+      <p class="modal-hint">Paste a headline and article text (e.g. from your Moneycontrol subscription). It runs through the same tagging, impact and summary engine as the live feeds.</p>
+      <label class="field">
+        <span>Headline <em>(optional — first sentence is used if empty)</em></span>
+        <input name="title" type="text" maxlength="300" placeholder="e.g. HDFC Bank Q2 profit jumps 18%, beats estimates">
+      </label>
+      <label class="field">
+        <span>Article text</span>
+        <textarea name="text" rows="9" maxlength="20000" required placeholder="Paste the article body here…"></textarea>
+      </label>
+      <label class="field">
+        <span>Source URL <em>(optional)</em></span>
+        <input name="url" type="url" placeholder="https://www.moneycontrol.com/news/…">
+      </label>
+      <div class="modal-preview" id="manualPreview" hidden></div>
+      <footer class="modal-foot">
+        <span class="modal-status" id="manualStatus"></span>
+        <button class="btn btn-ghost" value="cancel" formnovalidate type="submit">Cancel</button>
+        <button class="btn btn-primary" id="manualSubmit" value="default" type="submit">Analyse &amp; Post</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- ===================== SETTINGS MODAL (desktop) ===================== -->
+  <dialog class="modal" id="settingsModal" aria-label="Settings">
+    <div class="modal-card">
+      <header class="modal-head">
+        <h2>Settings</h2>
+        <button class="btn btn-icon btn-ghost" type="button" data-close aria-label="Close">✕</button>
+      </header>
+      <div id="settingsModalBody"></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <template id="settingsTpl">
+    <div class="settings">
+      <section class="set-group">
+        <h3>Breaking news alerts</h3>
+        <p class="set-desc">Native notifications for <b>High impact</b> stories only — desktop toasts on Windows 11, lock-screen notifications on Android.</p>
+        <div class="set-row">
+          <span>Alerts</span>
+          <label class="alert-toggle"><input type="checkbox" data-role="alerts-toggle" role="switch"><span class="switch"></span></label>
+        </div>
+        <div class="set-row"><span>Permission</span><b data-role="perm">—</b></div>
+        <div class="set-row"><span>Delivery</span><b data-role="delivery">—</b></div>
+        <button class="btn btn-ghost btn-sm" type="button" data-role="test-alert">Send test alert</button>
+      </section>
+      <section class="set-group">
+        <h3>Audio brief</h3>
+        <div class="set-row">
+          <span>Voice</span>
+          <select data-role="voice"></select>
+        </div>
+        <div class="set-row">
+          <span>Speed</span>
+          <input type="range" min="0.7" max="1.5" step="0.05" data-role="rate">
+        </div>
+      </section>
+      <section class="set-group">
+        <h3>Data</h3>
+        <div class="set-row"><span>Mode</span><b data-role="mode">—</b></div>
+        <div class="set-row"><span>Analysis engine</span><b data-role="engine">—</b></div>
+        <div class="set-row"><span>Polling</span><b data-role="poll">—</b></div>
+        <div class="set-row"><span>Offline cache</span><b data-role="cache">—</b></div>
+        <ul class="feed-health" data-role="feeds"></ul>
+        <div class="set-actions">
+          <button class="btn btn-ghost btn-sm" type="button" data-role="install" hidden>Install app</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-role="clear">Clear offline cache</button>
+        </div>
+      </section>
+      <p class="set-foot">Keyboard: <kbd>/</kbd> search · <kbd>j</kbd>/<kbd>k</kbd> next/prev · <kbd>a</kbd> audio brief · <kbd>m</kbd> manual post</p>
+    </div>
+  </template>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
