@@ -1,0 +1,52 @@
+name: Update news
+
+on:
+  schedule:
+    # 01:00 UTC = 06:30 AM IST and 13:00 UTC = 06:30 PM IST.
+    # GitHub may start a job a few minutes late, so the data is ready around 7 AM / 7 PM.
+    - cron: "0 1,13 * * *"
+  workflow_dispatch:   # lets you press "Run workflow" by hand
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-news
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Get the files
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install requirements
+        run: pip install -r requirements.txt
+
+      - name: Fetch news and send Telegram digest
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: python scripts/fetch_news.py
+
+      - name: Save the new data
+        run: |
+          git config user.name "news-radar-bot"
+          git config user.email "news-radar-bot@users.noreply.github.com"
+          git add docs/news.json
+          if git diff --cached --quiet; then
+            echo "Nothing changed."
+          else
+            git commit -m "Update news $(TZ=Asia/Kolkata date '+%d %b %Y %H:%M IST')"
+            git pull --rebase
+            git push
+          fi
