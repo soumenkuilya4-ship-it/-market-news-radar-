@@ -1,0 +1,24 @@
+name: backtest-prices
+on:
+  push:
+    branches: [claude/backtest-prices]
+    paths: ["backtest-data/**", ".github/workflows/backtest-prices.yml"]
+  workflow_dispatch:
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install yfinance pandas
+      - run: python backtest-data/fetch.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nse-prices
+          path: |
+            nse_prices_backtest.csv.gz
+            prior_ath.csv
+            failed.txt
+          retention-days: 7
