@@ -1,13 +1,15 @@
 // Market Radar server: serves the PWA from docs/, polls RSS feeds on an interval,
 // streams new articles to open clients (SSE) and sends Web Push for High impact news.
+import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { analyzeArticle } from '../docs/js/analyzer.js';
 import { aiInfo } from './ai.js';
 import { analyzeManual, feedStatus, pollFeeds } from './pipeline.js';
 import { PushService } from './push.js';
+import { buildRadar } from './radar.js';
 import { loadStockUniverse, stockInfo, stockPayload } from './stocks.js';
 import { ArticleStore } from './store.js';
 
@@ -16,7 +18,21 @@ const PUBLIC = join(ROOT, 'docs');
 const DATA = process.env.DATA_DIR || join(ROOT, 'data');
 const PORT = Number(process.env.PORT || 8080);
 const POLL_MS = Number(process.env.POLL_INTERVAL_MS || 3 * 60_000);
-const APP_TOKEN = process.env.APP_TOKEN || ''; // optional: protects write endpoints
+const APP_TOKEN = process.env.APP_TOKEN || ''; // optional: required for write endpoints from anywhere
+
+// Access code for write endpoints (manual post, refresh) when the app is reached from
+// outside this PC, e.g. through a Tailscale Funnel. Requests to localhost don't need it.
+const ACCESS_CODE = await (async () => {
+  const file = join(DATA, 'access-code.txt');
+  try {
+    const code = (await readFile(file, 'utf8')).trim();
+    if (code) return code;
+  } catch { /* create below */ }
+  const code = randomBytes(4).toString('hex').toUpperCase();
+  await mkdir(DATA, { recursive: true });
+  await writeFile(file, `${code}\n`);
+  return code;
+})();
 
 const store = await new ArticleStore(join(DATA, 'articles.json'), Number(process.env.MAX_ARTICLES || 1000)).load();
 const push = await new PushService(DATA).init();
@@ -124,8 +140,21 @@ async function readBody(req, limit = 1_000_000) {
   }
 }
 
+function isLocal(req) {
+  const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+  const addr = req.socket.remoteAddress || '';
+  const loopback = addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+  // A tunnel (Tailscale Funnel) also connects from loopback, but keeps the public Host name
+  // and adds forwarding headers, so any of those marks the request as remote.
+  const forwarded = ['x-forwarded-for', 'x-forwarded-host', 'forwarded', 'tailscale-funnel-request', 'cf-connecting-ip']
+    .some((h) => req.headers[h] !== undefined);
+  return loopback && !forwarded && ['localhost', '127.0.0.1', '[::1]'].includes(host);
+}
+
 function authorised(req) {
-  return !APP_TOKEN || req.headers['x-app-token'] === APP_TOKEN;
+  const given = req.headers['x-app-token'];
+  if (APP_TOKEN) return given === APP_TOKEN;
+  return isLocal(req) || given === ACCESS_CODE;
 }
 
 async function serveStatic(req, res, pathname) {
@@ -193,6 +222,18 @@ const routes = {
     broadcast('article', article);
     maybePush(article);
     sendJson(res, 201, { article });
+  },
+
+  // Only shown on this PC, so you can type it into your phone once.
+  'GET /api/access-code': (req, res) => (isLocal(req)
+    ? sendJson(res, 200, { code: APP_TOKEN || ACCESS_CODE })
+    : sendJson(res, 403, { error: 'Only available on the PC running Market Radar' })),
+
+  // News summary per symbol / sector, used by the Google Sheets script.
+  'POST /api/radar': async (req, res) => {
+    const body = await readBody(req, 200_000);
+    const rows = Array.isArray(body.rows) ? body.rows.slice(0, 500) : [];
+    sendJson(res, 200, buildRadar(rows, store.list({ limit: Infinity })));
   },
 
   'GET /api/stocks': (req, res) => sendJson(res, 200, stockPayload()),

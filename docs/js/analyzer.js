@@ -247,7 +247,7 @@ const instrumentByName = Object.fromEntries(INSTRUMENTS.map(([n, tv]) => [n, tv]
 // Stock universe (NIFTY 500 + Microcap 250 from NSE, loaded at runtime)
 // ---------------------------------------------------------------------------
 
-const INDUSTRY_SUBSECTOR = {
+export const INDUSTRY_SUBSECTOR = {
   'automobile and auto components': 'Auto',
   healthcare: 'Pharma & Healthcare',
   'information technology': 'IT & Tech',

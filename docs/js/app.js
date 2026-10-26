@@ -189,6 +189,17 @@ function connectStream() {
 }
 
 // Load the NSE stock list so manual posts and charts recognise all ~750 companies.
+// The access code is only returned on the PC itself (for typing into the phone once).
+async function loadAccessCode() {
+  if (state.mode !== 'server') return;
+  try {
+    state.accessCode = (await fetchJson('./api/access-code', {}, 5000)).code || null;
+  } catch {
+    state.accessCode = null;
+  }
+  renderSettingsAll();
+}
+
 async function loadStocks() {
   const url = state.mode === 'server' ? './api/stocks' : './stocks.json';
   try {
@@ -748,7 +759,7 @@ async function submitManual(form) {
         ({ article } = await fetchJson('./api/manual', { method: 'POST', body: JSON.stringify(payload) }, 90_000));
       } catch (err) {
         if (err.status !== 401) throw err;
-        const token = prompt('This server requires an app token for manual posts:');
+        const token = prompt('Enter the access code shown in Settings → Data on the PC running Market Radar:');
         if (!token) throw err;
         prefs.token = token;
         savePrefs();
@@ -824,6 +835,9 @@ function renderSettings(root) {
   set('engine', st.ai?.enabled ? `Claude (${st.ai.model}) + rules fallback` : 'Rules engine');
   const nStocks = st.stocks?.count || stockUniverseSize();
   set('stocks', nStocks ? `${nStocks} NSE stocks${st.stocks?.source ? ` · ${st.stocks.source}` : ''}` : `Built-in list (65)${st.stocks?.error ? ' · NSE download failed' : ''}`);
+  const accessRow = root.querySelector('[data-role="access"]')?.closest('.set-row');
+  if (accessRow) accessRow.hidden = !state.accessCode;
+  set('access', state.accessCode || '');
   set('cache', state.cacheCount != null ? `${state.cacheCount} articles saved (newest ${OFFLINE_LIMIT} + manual posts)` : '—');
   set('poll', state.mode === 'server' ? `Every ${Math.round((st.pollIntervalMs || POLL_MS) / 60000)} min on the server` : state.mode === 'static' ? 'Snapshot re-checked every 3 min' : '—');
   root.querySelector('[data-role="feeds"]').innerHTML = (st.feeds || []).map((f) => `<li class="${f.ok ? 'ok' : f.ok === false ? 'err' : ''}"><i></i>${esc(f.name)}<span title="${esc(f.lastError || '')}">${f.ok ? `${f.items} items` : esc(f.lastError || 'pending')}</span></li>`).join('');
@@ -1060,6 +1074,7 @@ async function boot() {
   state.mode = 'loading';
   await detectMode();
   loadStocks();
+  loadAccessCode();
   updateLive();
   renderAll();
   await swReady;

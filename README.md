@@ -88,6 +88,28 @@ How it loads and matches:
 
 **Claude cost.** Claude analyses at most 25 new items per poll, one at a time, at low effort. To use a cheaper model, set `AI_MODEL`.
 
+## Phone access and Android alerts (Tailscale Funnel)
+
+The app keeps running on your PC. A free Tailscale Funnel gives it a permanent `https://<pc-name>.<tailnet>.ts.net` address. Android push alerts and Google Sheets both need that address.
+
+1. Install Tailscale for Windows (https://tailscale.com/download/windows) and sign in.
+2. Double-click `windows\Enable phone access.cmd`. If it shows a link, open it and click **Enable Funnel**. The script then prints your `https://….ts.net` address.
+3. On your Android phone, open that address in Chrome, tap ⋮ → **Add to Home screen**, then turn on **Enable Breaking News Alerts**. High-impact alerts reach the lock screen even when the app is closed, as long as the PC is on.
+
+Anyone with the address can read the news. Posting and refreshing from outside the PC need the **Phone access code**, shown under Settings → Data only when you open the app on the PC itself. To turn the address off, run `windows\Disable phone access.cmd`.
+
+## Google Sheets: MASTER SHEET → 9_News_Radar
+
+`sheets/NewsRadar.gs` is a Google Apps Script. Every 15 minutes it sends the Type, Symbol and Name rows of **9_News_Radar** to `POST /api/radar` and writes the results to a **News_Live** tab. For each row it writes:
+
+- the latest headline
+- sentiment over the last 7 days
+- catalysts
+- risks, with 🚩 red flags such as probes, penalties, pledges, stake sales or downgrades
+- a suggested action
+
+Columns D–H of 9_News_Radar show News_Live first and fall back to the Tab 4 lookup when a row has no news. Rows without news aren't written, so your own data stays in place. Setup steps are at the top of the script file. `RADAR_DAYS` sets the look-back window (default 7 days).
+
 ## GitHub Pages (static snapshot)
 
 The `docs/` folder is the PWA, so it can also be served by GitHub Pages (Settings → Pages → `main` / `docs`). In that mode there is no server:
