@@ -94,3 +94,21 @@ test('word matching does not confuse "bank" with "ban"', () => {
   const a = analyzeArticle({ title: 'State Bank of India opens new branch in Pune', description: '' });
   assert.equal(a.sentiment, 'Neutral');
 });
+
+test('falls back to the next feed address when one fails', async () => {
+  const { createServer } = await import('node:http');
+  const { fetchFeed } = await import('../server/feeds.js');
+  const xml = readFileSync(new URL('./fixtures/nse.xml', import.meta.url), 'utf8');
+  const srv = createServer((req, res) => {
+    if (req.url === '/new.xml') { res.writeHead(200, { 'Content-Type': 'application/rss+xml' }); res.end(xml); } else { res.writeHead(404); res.end(); }
+  });
+  await new Promise((r) => srv.listen(0, r));
+  const base = `http://localhost:${srv.address().port}`;
+  try {
+    const items = await fetchFeed({ id: 'nse', name: 'NSE', category: 'Equities', url: `${base}/old.xml`, fallbacks: [`${base}/new.xml`] });
+    assert.equal(items.length, 2);
+    await assert.rejects(fetchFeed({ id: 'x', name: 'x', url: `${base}/gone.xml` }), /HTTP 404/);
+  } finally {
+    srv.close();
+  }
+});

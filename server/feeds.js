@@ -5,12 +5,26 @@ import { cleanText } from '../docs/js/analyzer.js';
 
 export const FEEDS = [
   { id: 'moneycontrol', name: 'Moneycontrol', category: 'Equities', url: 'https://www.moneycontrol.com/rss/business.xml' },
-  { id: 'nse', name: 'NSE Announcements', category: 'Equities', url: 'https://www.nseindia.com/static/rss/announcements.xml', warmup: 'https://www.nseindia.com/' },
+  {
+    id: 'nse',
+    name: 'NSE Announcements',
+    category: 'Equities',
+    url: 'https://nsearchives.nseindia.com/content/RSS/Online_announcements.xml',
+    // Tried in order if the main address fails (NSE has moved this feed before).
+    fallbacks: [
+      'https://archives.nseindia.com/content/RSS/Online_announcements.xml',
+      'https://www.nseindia.com/static/rss/announcements.xml',
+    ],
+    warmup: 'https://www.nseindia.com/',
+  },
   { id: 'investing', name: 'Investing.com Commodities', category: 'Commodities', url: 'https://in.investing.com/rss/commodities.rss' },
   { id: 'rbi', name: 'RBI Press Releases', category: 'Macro', url: 'https://rbi.org.in/pressreleases_rss.xml' },
 ];
 // Allow overriding a feed URL, e.g. FEED_NSE_URL=https://proxy.example/nse.xml
-for (const f of FEEDS) f.url = process.env[`FEED_${f.id.toUpperCase()}_URL`] || f.url;
+for (const f of FEEDS) {
+  const override = process.env[`FEED_${f.id.toUpperCase()}_URL`];
+  if (override) { f.url = override; f.fallbacks = []; }
+}
 
 const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
@@ -125,7 +139,15 @@ async function fetchText(url, feed, attempt = 0) {
 }
 
 export async function fetchFeed(feed) {
-  const xml = await fetchText(feed.url, feed);
-  if (!/<(rss|feed|rdf:RDF|channel)[\s>]/i.test(xml)) throw new Error('Response is not an RSS/Atom document');
-  return parseFeed(xml, feed);
+  let firstError = null;
+  for (const url of [feed.url, ...(feed.fallbacks || [])]) {
+    try {
+      const xml = await fetchText(url, feed);
+      if (!/<(rss|feed|rdf:RDF|channel)[\s>]/i.test(xml)) throw new Error('Response is not an RSS/Atom document');
+      return parseFeed(xml, feed);
+    } catch (err) {
+      firstError ||= err;
+    }
+  }
+  throw firstError;
 }

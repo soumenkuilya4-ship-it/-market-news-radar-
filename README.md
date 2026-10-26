@@ -5,7 +5,7 @@ Market Radar is a financial market news app for Indian markets. You can install 
 | Feed | Default asset class |
 |---|---|
 | Moneycontrol Business: `moneycontrol.com/rss/business.xml` | Equities |
-| NSE Corporate Announcements: `nseindia.com/static/rss/announcements.xml` | Equities |
+| NSE Corporate Announcements: `nsearchives.nseindia.com/content/RSS/Online_announcements.xml` | Equities |
 | Investing.com Commodities: `in.investing.com/rss/commodities.rss` | Commodities |
 | RBI Press Releases: `rbi.org.in/pressreleases_rss.xml` | Macro |
 
@@ -68,7 +68,7 @@ Web Push needs **HTTPS**. `localhost` is the one exception, so it works for desk
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | auto-generated | Set these in production so subscriptions survive redeploys |
 | `VAPID_SUBJECT` | `mailto:alerts@market-radar.local` | Contact address for the push services. Use your own email |
 | `APP_TOKEN` | — | If set, manual posts and refresh need this token. The app asks for it once |
-| `FEED_<ID>_URL` | — | Override a feed URL, e.g. `FEED_NSE_URL` (IDs: `MONEYCONTROL`, `NSE`, `INVESTING`, `RBI`) |
+| `FEED_<ID>_URL` | — | Override a feed URL (the NSE feed also tries backup addresses on its own), e.g. `FEED_NSE_URL` (IDs: `MONEYCONTROL`, `NSE`, `INVESTING`, `RBI`) |
 
 **About the feeds.** NSE and Investing.com block many non-browser and data-centre requests. The server sends browser-like headers, and for NSE it fetches session cookies first. If a feed still fails from your host, its status shows red under **Settings → Data**. You can then point that feed at a proxy with `FEED_<ID>_URL`.
 
