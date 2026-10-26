@@ -72,6 +72,15 @@ Web Push needs **HTTPS**. `localhost` is the one exception, so it works for desk
 
 **About the feeds.** NSE and Investing.com block many non-browser and data-centre requests. The server sends browser-like headers, and for NSE it fetches session cookies first. If a feed still fails from your host, its status shows red under **Settings → Data**. You can then point that feed at a proxy with `FEED_<ID>_URL`.
 
+**Stock list.** The app recognises companies from NSE's official NIFTY 500 and NIFTY Microcap 250 lists, about 750 stocks:
+
+- It downloads both lists from NSE in the background when it starts, saves them in `data/stocks.json`, and refreshes them weekly. Stored stories are re-tagged when the list changes.
+- It matches each company by its full name (e.g. "Dixon Technologies"), a distinctive short name (e.g. "Suzlon" or "Polycab"), or its NSE symbol in capitals (e.g. "IRCTC").
+- When the industry keywords don't give a clear sector, the company's NSE industry sets the sub-sector.
+- If NSE can't be reached, it uses the last saved copy, or a `data/stocks.csv` you provide (same columns as NSE's index files: Company Name, Industry, Symbol). If neither exists, it uses the built-in list of 65.
+- **Settings → Data → Stock list** shows which list is in use.
+- `STOCK_LIST_URLS` (comma-separated) overrides the download links.
+
 **Claude cost.** Claude analyses at most 25 new items per poll, one at a time, at low effort. To use a cheaper model, set `AI_MODEL`.
 
 ## GitHub Pages (static snapshot)

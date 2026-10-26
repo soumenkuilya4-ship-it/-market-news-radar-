@@ -3,9 +3,11 @@
 // if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set, sends a digest of new
 // High/Medium impact stories to Telegram.
 import { readFile, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { aiInfo } from '../server/ai.js';
 import { FEEDS } from '../server/feeds.js';
 import { feedStatus, pollFeeds } from '../server/pipeline.js';
+import { loadStockUniverse, stockInfo, stockPayload } from '../server/stocks.js';
 
 const OUT = process.env.STATIC_OUT || new URL('../docs/news.json', import.meta.url);
 const KEEP = Number(process.env.STATIC_KEEP || 300);
@@ -30,6 +32,12 @@ let previous = [];
 try {
   previous = JSON.parse(await readFile(OUT, 'utf8')).articles || [];
 } catch { /* first run */ }
+
+await loadStockUniverse(process.env.DATA_DIR || fileURLToPath(new URL('../data', import.meta.url)));
+if (stockInfo.count) {
+  await writeFile(new URL('../docs/stocks.json', import.meta.url), JSON.stringify(stockPayload()));
+}
+console.log(`stocks: ${stockInfo.count || 'built-in'} (${stockInfo.source})`);
 
 const store = new MemoryStore(previous);
 const fresh = await pollFeeds(store, { aiLimit: Number(process.env.AI_LIMIT || 40) });

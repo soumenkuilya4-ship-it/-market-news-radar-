@@ -243,8 +243,152 @@ const instrumentMatchers = INSTRUMENTS.map(([name, tv, ...aliases]) => ({
 }));
 const instrumentByName = Object.fromEntries(INSTRUMENTS.map(([n, tv]) => [n, tv]));
 
+// ---------------------------------------------------------------------------
+// Stock universe (NIFTY 500 + Microcap 250 from NSE, loaded at runtime)
+// ---------------------------------------------------------------------------
+
+const INDUSTRY_SUBSECTOR = {
+  'automobile and auto components': 'Auto',
+  healthcare: 'Pharma & Healthcare',
+  'information technology': 'IT & Tech',
+  'metals & mining': 'Metals',
+  'oil gas & consumable fuels': 'Energy',
+  power: 'Energy',
+  'fast moving consumer goods': 'FMCG & Consumer',
+  'consumer durables': 'FMCG & Consumer',
+  'consumer services': 'FMCG & Consumer',
+  'capital goods': 'Infra & Capital Goods',
+  construction: 'Infra & Capital Goods',
+  'construction materials': 'Infra & Capital Goods',
+  realty: 'Realty',
+  telecommunication: 'Telecom & Media',
+  'media entertainment & publication': 'Telecom & Media',
+  chemicals: 'Chemicals',
+  textiles: 'Textiles',
+  'forest materials': 'Paper & Forest',
+  'financial services': 'NBFC & Financials',
+};
+
+// Trailing words dropped to build a short alias ("Reliance Industries" -> "Reliance").
+const GENERIC_TAIL = new Set(['industries', 'industry', 'corporation', 'corp', 'company', 'co', 'enterprises', 'india', 'of', '(india)', 'limited', 'ltd', 'ltd.', '&']);
+// One-word aliases that are too common, or are group names shared by many companies.
+const SHORT_ALIAS_STOP = new Set([
+  'bank', 'india', 'indian', 'national', 'united', 'power', 'energy', 'global', 'capital', 'finance', 'financial',
+  'gold', 'metal', 'metals', 'steel', 'life', 'star', 'first', 'great', 'central', 'state', 'city', 'union',
+  'general', 'home', 'house', 'prime', 'premier', 'super', 'supreme', 'standard', 'universal', 'popular', 'gateway',
+  'ultra', 'infra', 'solar', 'green', 'royal', 'bharat', 'hindustan', 'tata', 'adani', 'bajaj', 'birla', 'aditya',
+  'mahindra', 'godrej', 'jindal', 'hinduja', 'kotak', 'reliance', 'shriram', 'muthoot', 'oberoi', 'apollo', 'max',
+  'future', 'network', 'motors', 'systems', 'solutions', 'technologies', 'holdings', 'investments', 'ventures',
+  'housing', 'chemicals', 'pharmaceuticals', 'laboratories', 'cement', 'textiles', 'electricals', 'electronics',
+  'engineering', 'infrastructure', 'healthcare', 'hospitals', 'foods', 'beverages', 'container', 'shipping', 'cables',
+  'pipes', 'tyres', 'paints', 'sugar', 'exchange', 'insurance', 'securities', 'credit', 'trust', 'alpha', 'delta',
+  'federal', 'eastern', 'western', 'southern', 'northern', 'oriental', 'continental', 'international', 'imperial',
+  'persistent', 'prestige', 'phoenix', 'sterling', 'metropolis', 'vision', 'quality', 'premium', 'classic', 'modern',
+  'gujarat', 'maharashtra', 'karnataka', 'punjab', 'kerala', 'bengal', 'rajasthan', 'mangalore', 'chennai', 'madras',
+  'delhi', 'mumbai', 'bombay', 'calcutta', 'kolkata', 'hyderabad', 'bangalore', 'pune', 'andhra', 'orissa', 'odisha',
+  'asian', 'american', 'british', 'japan', 'china', 'swiss', 'coal', 'cement', 'railway', 'indraprastha', 'nippon',
+  'computer', 'digital', 'equity', 'money', 'motor', 'auto', 'avenue', 'century', 'garden', 'graphite', 'action',
+  'swan', 'force', 'route', 'happiest', 'intellect', 'crompton',
+]);
+// Acronyms in capitals that are not stock symbols.
+const SYMBOL_STOP = new Set(['RBI', 'GDP', 'CPI', 'WPI', 'USD', 'INR', 'IPO', 'CEO', 'CFO', 'COO', 'FII', 'DII', 'FPI', 'GST', 'EPS',
+  'NSE', 'BSE', 'SEBI', 'NIFTY', 'MCX', 'AGM', 'EGM', 'ESG', 'LTD', 'THE', 'AND', 'FOR', 'NEW', 'ONE', 'ALL', 'CAN', 'NOT',
+  'MPC', 'PMI', 'IIP', 'NPA', 'EBITDA', 'PAT', 'YOY', 'QOQ', 'USA', 'UAE', 'OPEC', 'IMF', 'WTO', 'EV', 'AI', 'IT']);
+// Phrases that contain a listed company's name but mean something else.
+const NAME_BLOCKERS = ['reserve bank of india', 'securities and exchange board of india', 'government of india', 'president of india', 'supreme court of india'];
+
+let universe = { list: [], bySymbol: new Map(), nameRe: null, aliasTo: new Map(), firstRe: null, firstTo: new Map(), symbolRe: null };
+
+function baseName(name) {
+  return String(name).replace(/\s+/g, ' ').replace(/[\s,]*\b(limited|ltd)\.?\s*$/i, '').trim();
+}
+
+/** Text aliases a company is recognised by in news (lower-case). */
+export function stockAliases(name) {
+  const base = baseName(name).toLowerCase();
+  if (!base) return [];
+  const aliases = [base];
+  if (base.includes(' and ')) aliases.push(base.replace(/ and /g, ' & '));
+  if (base.includes(' & ')) aliases.push(base.replace(/ & /g, ' and '));
+  const words = base.split(' ');
+  const short = [...words];
+  while (short.length > 1 && GENERIC_TAIL.has(short.at(-1).replace(/\.$/, ''))) short.pop();
+  const shortName = short.join(' ');
+  if (shortName !== base) {
+    const single = short.length === 1;
+    if (!single || (words.length <= 3 && shortName.length >= 5 && !SHORT_ALIAS_STOP.has(shortName))) aliases.push(shortName);
+  }
+  return [...new Set(aliases)].filter((a) => a.length >= 3);
+}
+
+/** A distinctive first word ("Suzlon" for Suzlon Energy), matched only when capitalised. */
+function firstWordAlias(name) {
+  const words = baseName(name).split(' ');
+  const w = words[0].replace(/[^A-Za-z]/g, '');
+  if (words.length < 2 || w.length < 5 || w !== words[0] || SHORT_ALIAS_STOP.has(w.toLowerCase())) return null;
+  return w[0].toUpperCase() + w.slice(1).toLowerCase();
+}
+
+/**
+ * Install the stock universe used to recognise companies in news.
+ * @param {{symbol: string, name: string, industry?: string}[]} stocks
+ */
+export function setStockUniverse(stocks) {
+  const list = (stocks || []).filter((s) => s?.symbol && s?.name);
+  const bySymbol = new Map(list.map((s) => [s.symbol.toUpperCase(), s]));
+  const owners = new Map(); // alias -> Set(symbol)
+  for (const s of list) {
+    for (const a of stockAliases(s.name)) {
+      if (!owners.has(a)) owners.set(a, new Set());
+      owners.get(a).add(s.symbol.toUpperCase());
+    }
+  }
+  const aliasTo = new Map();
+  for (const [a, syms] of owners) if (syms.size === 1) aliasTo.set(a, [...syms][0]);
+  const firstOwners = new Map();
+  for (const s of list) {
+    const w = firstWordAlias(s.name);
+    if (!w || owners.has(w.toLowerCase())) continue;
+    if (!firstOwners.has(w)) firstOwners.set(w, new Set());
+    firstOwners.get(w).add(s.symbol.toUpperCase());
+  }
+  const firstTo = new Map();
+  for (const [w, syms] of firstOwners) if (syms.size === 1) { firstTo.set(w, [...syms][0]); firstTo.set(w.toUpperCase(), [...syms][0]); }
+  for (const b of NAME_BLOCKERS) aliasTo.set(b, null);
+  const alts = [...aliasTo.keys()].sort((x, y) => y.length - x.length).map(escapeRe);
+  const syms = [...bySymbol.keys()].filter((k) => k.length >= 3 && !SYMBOL_STOP.has(k) && /[A-Z]/.test(k));
+  universe = {
+    list,
+    bySymbol,
+    aliasTo,
+    firstTo,
+    firstRe: firstTo.size ? new RegExp(`(?<![A-Za-z0-9&])(${[...firstTo.keys()].map(escapeRe).join('|')})(?![A-Za-z0-9&])`, 'g') : null,
+    nameRe: alts.length ? new RegExp(`(?<![a-z0-9&])(${alts.join('|')})(?![a-z0-9&])`, 'gi') : null,
+    symbolRe: syms.length ? new RegExp(`(?<![A-Za-z0-9&-])(${syms.sort((x, y) => y.length - x.length).map(escapeRe).join('|')})(?![A-Za-z0-9&-])`, 'g') : null,
+  };
+  return list.length;
+}
+
+export function stockUniverseSize() { return universe.list.length; }
+
+function universeTv(symbol) {
+  return `BSE:${symbol.replace(/[-&]/g, '_')}`;
+}
+
+/** Companies from the universe mentioned in the text, in order of appearance. */
+function matchUniverse(text) {
+  const hits = [];
+  const add = (sym) => { if (sym && !hits.includes(sym)) hits.push(sym); };
+  if (universe.nameRe) for (const m of text.matchAll(universe.nameRe)) add(universe.aliasTo.get(m[1].toLowerCase()));
+  if (universe.firstRe) for (const m of text.matchAll(universe.firstRe)) add(universe.firstTo.get(m[1]));
+  if (universe.symbolRe) for (const m of text.matchAll(universe.symbolRe)) add(m[1]);
+  return hits.map((sym) => universe.bySymbol.get(sym)).filter(Boolean);
+}
+
 export function tradingViewSymbol(name) {
-  return instrumentByName[name] || null;
+  if (instrumentByName[name]) return instrumentByName[name];
+  if (name && universe.bySymbol.has(String(name).toUpperCase())) return universeTv(String(name).toUpperCase());
+  return null;
 }
 
 function sentences(text) {
@@ -396,6 +540,19 @@ export function analyzeArticle(item) {
   const found = [];
   for (const m of instrumentMatchers) {
     if (m.re.test(full) && !found.includes(m.name)) found.push(m.name);
+  }
+  const foundTv = new Set(found.map((n) => instrumentByName[n]));
+  const companies = matchUniverse(full);
+  for (const c of companies) {
+    const sym = c.symbol.toUpperCase();
+    if (found.includes(sym) || foundTv.has(universeTv(sym))) continue;
+    found.push(sym);
+  }
+  // Use the first named company's NSE industry when the keywords gave no clear sector.
+  if (assetClass === 'Equities' && companies.length && (!best || best.score < 2 || ['Markets', 'Corporate Action'].includes(subSector))) {
+    const c = companies[0];
+    const ind = INDUSTRY_SUBSECTOR[String(c.industry || '').toLowerCase()];
+    if (ind) subSector = ind === 'NBFC & Financials' && /\bbank\b/i.test(c.name) ? 'Banking' : ind;
   }
   // "gold"/"silver" etc. mentioned only incidentally in equities stories are noise.
   const instruments = found.slice(0, 6);

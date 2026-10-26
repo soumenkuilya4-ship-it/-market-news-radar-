@@ -4,9 +4,11 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { analyzeArticle } from '../docs/js/analyzer.js';
 import { aiInfo } from './ai.js';
 import { analyzeManual, feedStatus, pollFeeds } from './pipeline.js';
 import { PushService } from './push.js';
+import { loadStockUniverse, stockInfo, stockPayload } from './stocks.js';
 import { ArticleStore } from './store.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -18,6 +20,8 @@ const APP_TOKEN = process.env.APP_TOKEN || ''; // optional: protects write endpo
 
 const store = await new ArticleStore(join(DATA, 'articles.json'), Number(process.env.MAX_ARTICLES || 1000)).load();
 const push = await new PushService(DATA).init();
+await loadStockUniverse(DATA, { download: false }); // instant: whatever is saved on disk
+reanalyzeRuleArticles();
 const clients = new Set();
 let lastPoll = null;
 let nextPoll = null;
@@ -62,6 +66,18 @@ async function runPoll({ silent = false } = {}) {
   }
 }
 
+/** Re-tag stored rules-engine articles, e.g. after the stock list changed. */
+function reanalyzeRuleArticles() {
+  const now = new Date().toISOString();
+  let n = 0;
+  for (const a of store.list({ limit: Infinity })) {
+    if (a.engine !== 'rules') continue;
+    store.update(a.id, { ...analyzeArticle(a), updatedAt: now });
+    n++;
+  }
+  if (n) console.log(`[stocks] re-tagged ${n} stored article(s) with ${stockInfo.count || 'built-in'} stocks`);
+}
+
 function statusPayload() {
   return {
     ok: true,
@@ -72,6 +88,7 @@ function statusPayload() {
     pollIntervalMs: POLL_MS,
     feeds: Object.values(feedStatus),
     ai: aiInfo,
+    stocks: { count: stockInfo.count, source: stockInfo.source, updatedAt: stockInfo.updatedAt, error: stockInfo.error },
     push: { subscribers: push.count },
     tokenRequired: Boolean(APP_TOKEN),
   };
@@ -178,6 +195,8 @@ const routes = {
     sendJson(res, 201, { article });
   },
 
+  'GET /api/stocks': (req, res) => sendJson(res, 200, stockPayload()),
+
   'GET /api/push/key': (req, res) => sendJson(res, 200, { publicKey: push.publicKey }),
 
   'POST /api/push/subscribe': async (req, res) => {
@@ -236,6 +255,17 @@ server.listen(PORT, () => {
 // First poll: when the store is empty, seed it without blasting alerts for the backlog.
 runPoll({ silent: store.size === 0 }).catch((e) => console.error('[poll]', e));
 setInterval(() => runPoll().catch((e) => console.error('[poll]', e)), POLL_MS);
+// Download the NSE stock list in the background now, then re-check daily (it refreshes weekly).
+async function refreshStocks() {
+  const before = `${stockInfo.source}|${stockInfo.updatedAt}|${stockInfo.count}`;
+  await loadStockUniverse(DATA).catch((e) => console.error('[stocks]', e));
+  if (`${stockInfo.source}|${stockInfo.updatedAt}|${stockInfo.count}` !== before) {
+    reanalyzeRuleArticles();
+    broadcast('status', statusPayload());
+  }
+}
+refreshStocks();
+setInterval(refreshStocks, 24 * 3600_000);
 
 async function shutdown() {
   await store.flush().catch(() => {});

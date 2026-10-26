@@ -1,4 +1,4 @@
-import { analyzeArticle, tradingViewSymbol } from './analyzer.js';
+import { analyzeArticle, setStockUniverse, stockUniverseSize, tradingViewSymbol } from './analyzer.js';
 import { clearArticles, loadArticles, OFFLINE_LIMIT, saveArticles } from './db.js';
 
 // ---------------------------------------------------------------------------
@@ -175,10 +175,27 @@ function connectStream() {
   es.addEventListener('article', (e) => ingest([JSON.parse(e.data)], { live: true }));
   es.addEventListener('update', (e) => ingest([JSON.parse(e.data)], { live: true }));
   es.addEventListener('status', (e) => {
+    const prevStocks = state.status?.stocks;
     state.status = JSON.parse(e.data);
+    const st = state.status.stocks;
+    if (prevStocks && st && (st.count !== prevStocks.count || st.updatedAt !== prevStocks.updatedAt)) {
+      // The server re-tagged articles with a new stock list: pick up the changes.
+      loadStocks();
+      syncFromServer().catch(() => {});
+    }
     updateMeta();
     renderSettingsAll();
   });
+}
+
+// Load the NSE stock list so manual posts and charts recognise all ~750 companies.
+async function loadStocks() {
+  const url = state.mode === 'server' ? './api/stocks' : './stocks.json';
+  try {
+    const data = await fetchJson(url, {}, 10_000);
+    if (data?.stocks?.length) setStockUniverse(data.stocks.map(([symbol, name, industry]) => ({ symbol, name, industry })));
+  } catch { /* built-in list only */ }
+  renderSettingsAll();
 }
 
 async function detectMode() {
@@ -805,6 +822,8 @@ function renderSettings(root) {
   set('delivery', state.pushSub ? 'Web Push (works when app is closed)' : prefs.alerts ? 'In-app (while open)' : 'Off');
   set('mode', { server: 'Live server (SSE)', static: 'Static snapshot (news.json)', offline: 'Offline cache', loading: 'Connecting…' }[state.mode]);
   set('engine', st.ai?.enabled ? `Claude (${st.ai.model}) + rules fallback` : 'Rules engine');
+  const nStocks = st.stocks?.count || stockUniverseSize();
+  set('stocks', nStocks ? `${nStocks} NSE stocks${st.stocks?.source ? ` · ${st.stocks.source}` : ''}` : `Built-in list (65)${st.stocks?.error ? ' · NSE download failed' : ''}`);
   set('cache', state.cacheCount != null ? `${state.cacheCount} articles saved (newest ${OFFLINE_LIMIT} + manual posts)` : '—');
   set('poll', state.mode === 'server' ? `Every ${Math.round((st.pollIntervalMs || POLL_MS) / 60000)} min on the server` : state.mode === 'static' ? 'Snapshot re-checked every 3 min' : '—');
   root.querySelector('[data-role="feeds"]').innerHTML = (st.feeds || []).map((f) => `<li class="${f.ok ? 'ok' : f.ok === false ? 'err' : ''}"><i></i>${esc(f.name)}<span title="${esc(f.lastError || '')}">${f.ok ? `${f.items} items` : esc(f.lastError || 'pending')}</span></li>`).join('');
@@ -1040,6 +1059,7 @@ async function boot() {
   // 2) Live data.
   state.mode = 'loading';
   await detectMode();
+  loadStocks();
   updateLive();
   renderAll();
   await swReady;
