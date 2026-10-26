@@ -164,7 +164,7 @@ async function syncFromStatic() {
 let es = null;
 function connectStream() {
   if (es) es.close();
-  es = new EventSource('./api/stream');
+  es = new EventSource(prefs.token ? `./api/stream?code=${encodeURIComponent(prefs.token)}` : './api/stream');
   es.addEventListener('open', () => {
     const wasDown = !state.connected;
     state.connected = true;
@@ -763,6 +763,7 @@ async function submitManual(form) {
         if (!token) throw err;
         prefs.token = token;
         savePrefs();
+        connectStream();
         ({ article } = await fetchJson('./api/manual', { method: 'POST', body: JSON.stringify(payload) }, 90_000));
       }
     } else {

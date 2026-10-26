@@ -49,7 +49,8 @@ let polling = false;
 
 function broadcast(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of clients) res.write(msg);
+  const isPrivate = data?.sourceId === 'manual';
+  for (const res of clients) if (!isPrivate || res.canSeePrivate) res.write(msg);
 }
 
 async function maybePush(article) {
@@ -151,6 +152,14 @@ function isLocal(req) {
   return loopback && !forwarded && ['localhost', '127.0.0.1', '[::1]'].includes(host);
 }
 
+// Manual posts (possibly paid articles you pasted) are only shown on this PC or to
+// devices that send the access code (header, or ?code= for the live stream).
+function canSeePrivate(req, url) {
+  return authorised(req) || (!APP_TOKEN && url?.searchParams.get('code') === ACCESS_CODE)
+    || (APP_TOKEN && url?.searchParams.get('code') === APP_TOKEN);
+}
+const publicOnly = (list) => list.filter((a) => a.sourceId !== 'manual');
+
 function authorised(req) {
   const given = req.headers['x-app-token'];
   if (APP_TOKEN) return given === APP_TOKEN;
@@ -182,19 +191,21 @@ const routes = {
 
   'GET /api/news': (req, res, url) => {
     const p = url.searchParams;
+    const list = store.list({
+      limit: Math.min(Number(p.get('limit')) || 200, 1000),
+      since: p.get('since') || undefined,
+      q: p.get('q') || undefined,
+      assetClass: p.get('assetClass') || undefined,
+      impact: p.get('impact') || undefined,
+    });
     sendJson(res, 200, {
-      articles: store.list({
-        limit: Math.min(Number(p.get('limit')) || 200, 1000),
-        since: p.get('since') || undefined,
-        q: p.get('q') || undefined,
-        assetClass: p.get('assetClass') || undefined,
-        impact: p.get('impact') || undefined,
-      }),
+      articles: canSeePrivate(req, url) ? list : publicOnly(list),
       generatedAt: new Date().toISOString(),
     });
   },
 
-  'GET /api/stream': (req, res) => {
+  'GET /api/stream': (req, res, url) => {
+    res.canSeePrivate = canSeePrivate(req, url);
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -230,10 +241,11 @@ const routes = {
     : sendJson(res, 403, { error: 'Only available on the PC running Market Radar' })),
 
   // News summary per symbol / sector, used by the Google Sheets script.
-  'POST /api/radar': async (req, res) => {
+  'POST /api/radar': async (req, res, url) => {
     const body = await readBody(req, 200_000);
     const rows = Array.isArray(body.rows) ? body.rows.slice(0, 500) : [];
-    sendJson(res, 200, buildRadar(rows, store.list({ limit: Infinity })));
+    const all = store.list({ limit: Infinity });
+    sendJson(res, 200, buildRadar(rows, canSeePrivate(req, url) ? all : publicOnly(all)));
   },
 
   'GET /api/stocks': (req, res) => sendJson(res, 200, stockPayload()),

@@ -15,6 +15,9 @@
  *      updateNewsRadar, Time-driven, Minutes timer, Every 15 minutes.)
  */
 const MARKET_RADAR_URL = 'https://YOUR-PC-NAME.YOUR-TAILNET.ts.net';
+// Optional: the "Phone access code" from Settings on your PC. With it, your own
+// Manual Posts are included in the radar; without it only the public feeds are used.
+const MARKET_RADAR_CODE = '';
 
 const SOURCE_TAB = '9_News_Radar';
 const SOURCE_FIRST_ROW = 5;
@@ -38,6 +41,7 @@ function updateNewsRadar() {
     const res = UrlFetchApp.fetch(MARKET_RADAR_URL.replace(/\/+$/, '') + '/api/radar', {
       method: 'post',
       contentType: 'application/json',
+      headers: MARKET_RADAR_CODE ? { 'X-App-Token': MARKET_RADAR_CODE } : {},
       payload: JSON.stringify({ rows: rows }),
       muteHttpExceptions: true,
     });
