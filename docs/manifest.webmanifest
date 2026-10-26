@@ -1,0 +1,22 @@
+{
+  "name": "Market Radar — Market News Intelligence",
+  "short_name": "Market Radar",
+  "description": "Real-time Indian market news: auto-tagged, impact-rated, summarised, with High impact alerts.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "categories": ["finance", "news", "business"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "High-Impact", "url": "./?view=high", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
