@@ -44,6 +44,16 @@ npm start            # http://localhost:8080
 
 Open the URL in Edge or Chrome and use **Install app** (address bar icon or ⋯ menu). On Windows 11 it becomes a standalone app with native toasts.
 
+### Start automatically on Windows (no terminal needed)
+
+In the project folder, open `windows` and double-click **Install autostart.cmd**. After that:
+
+- Market Radar starts hidden in the background every time you log in to Windows.
+- A **Market Radar** shortcut on your Desktop opens the app, and starts it first if it isn't running.
+- Logs go to `data\server.log`.
+
+To undo it, double-click **windows\Remove autostart.cmd**. That stops the app and removes both shortcuts.
+
 Web Push needs **HTTPS**. `localhost` is the one exception, so it works for desktop testing. For Android, deploy the server behind HTTPS on any Node host, such as Render, Railway, Fly.io, or a VPS with Caddy or nginx. Then open the site in Chrome on Android, choose **Add to Home screen**, and turn on alerts.
 
 ### Configuration (environment variables)

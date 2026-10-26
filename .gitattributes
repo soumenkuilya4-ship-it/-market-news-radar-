@@ -1,0 +1,2 @@
+windows/*.cmd text eol=crlf
+windows/*.vbs text eol=crlf

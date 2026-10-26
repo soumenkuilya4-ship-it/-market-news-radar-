@@ -80,4 +80,13 @@ writeFileSync(new URL('icon-192.png', OUT), png(192, radar(1)));
 writeFileSync(new URL('icon-512.png', OUT), png(512, radar(1)));
 writeFileSync(new URL('icon-maskable-512.png', OUT), png(512, radar(0.72, { rounded: false })));
 writeFileSync(new URL('badge-96.png', OUT), png(96, radar(1.15, { mono: true, background: false })));
+
+// Windows .ico (PNG-compressed entry) for the desktop shortcut.
+const ico256 = png(256, radar(1));
+const header = Buffer.alloc(22);
+header.writeUInt16LE(0, 0); header.writeUInt16LE(1, 2); header.writeUInt16LE(1, 4);
+header[6] = 0; header[7] = 0; // 256 x 256
+header.writeUInt16LE(1, 10); header.writeUInt16LE(32, 12);
+header.writeUInt32LE(ico256.length, 14); header.writeUInt32LE(22, 18);
+writeFileSync(new URL('icon.ico', OUT), Buffer.concat([header, ico256]));
 console.log('Icons written to docs/icons/');

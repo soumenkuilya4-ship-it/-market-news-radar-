@@ -220,6 +220,14 @@ const server = createServer(async (req, res) => {
   }
 });
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`Port ${PORT} is already in use — Market Radar is probably already running.`);
+    process.exit(0);
+  }
+  throw err;
+});
+
 server.listen(PORT, () => {
   console.log(`Market Radar running on http://localhost:${PORT}`);
   console.log(`Polling ${Object.keys(feedStatus).length} feeds every ${POLL_MS / 1000}s · AI: ${aiInfo.enabled ? aiInfo.model : 'rules engine'}`);
