@@ -1,19 +1,27 @@
-// NSE stock universe: NIFTY 500 + NIFTY Microcap 250 constituents (~750 companies).
-// Downloaded from NSE, cached in data/stocks.json and refreshed weekly. A CSV you
-// place at data/stocks.csv (same columns as NSE's index files) is used if downloads fail.
+// Stock universe = your own list (server/my-universe.csv, from the RS Scanner sheet)
+// + NIFTY 500 + NIFTY Microcap 250. Company names come from NSE's index files and its
+// full equity list (EQUITY_L.csv), downloaded in the background, cached in
+// data/stocks.json and refreshed weekly. data/my-universe.csv overrides the bundled
+// list; data/stocks.csv (Company Name, Industry, Symbol) is used if downloads fail.
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { setStockUniverse } from '../docs/js/analyzer.js';
 import { JsonStore } from './store.js';
 
-const LISTS = (process.env.STOCK_LIST_URLS
+const HERE = dirname(fileURLToPath(import.meta.url));
+// Index lists: their members join the universe.
+const INDEX_LISTS = (process.env.STOCK_LIST_URLS
   ? [process.env.STOCK_LIST_URLS.split(',').map((u) => u.trim()).filter(Boolean)]
   : [
     ['https://archives.nseindia.com/content/indices/ind_nifty500list.csv', 'https://niftyindices.com/IndexConstituent/ind_nifty500list.csv'],
     ['https://archives.nseindia.com/content/indices/ind_niftymicrocap250_list.csv', 'https://niftyindices.com/IndexConstituent/ind_niftymicrocap250_list.csv'],
   ]);
+// Full NSE equity list: used only to look up company names for your symbols.
+const NAME_LIST = ['https://archives.nseindia.com/content/equities/EQUITY_L.csv', 'https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv'];
 
 const MAX_AGE_MS = 7 * 24 * 3600_000;
+const CACHE_VERSION = 2; // bump when the universe definition changes
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
   Accept: 'text/csv,text/plain,*/*',
@@ -44,16 +52,16 @@ export function parseConstituentsCsv(text) {
   if (lines.length < 2) return [];
   const head = splitCsvLine(lines[0]).map((h) => h.toLowerCase());
   const col = (re) => head.findIndex((h) => re.test(h));
-  const iName = col(/company|name of company|^name$/);
+  const iName = col(/company|^name$|stock name/);
   const iSym = col(/^symbol$|symbol/);
   const iInd = col(/industry|sector/);
-  if (iName < 0 || iSym < 0) return [];
+  if (iSym < 0) return [];
   const out = [];
   for (const line of lines.slice(1)) {
     const cells = splitCsvLine(line);
     const symbol = (cells[iSym] || '').toUpperCase();
-    const name = cells[iName] || '';
-    if (!symbol || !name || !/^[A-Z0-9&_-]+$/.test(symbol)) continue;
+    const name = iName >= 0 ? cells[iName] || '' : '';
+    if (!symbol || !/^[A-Z0-9&_-]+$/.test(symbol)) continue;
     out.push({ symbol, name, industry: iInd >= 0 ? cells[iInd] || '' : '' });
   }
   return out;
@@ -67,28 +75,53 @@ async function download(url) {
   return rows;
 }
 
-function merge(groups) {
-  const bySymbol = new Map();
-  for (const rows of groups) for (const r of rows) if (!bySymbol.has(r.symbol)) bySymbol.set(r.symbol, r);
-  return [...bySymbol.values()];
-}
-
-/** Download every list (trying mirrors in order). Throws if none could be fetched. */
-export async function downloadStockLists() {
-  const groups = [];
-  const errors = [];
-  for (const mirrors of LISTS) {
-    for (const url of mirrors) {
-      try {
-        groups.push(await download(url));
-        break;
-      } catch (err) {
-        errors.push(`${url.split('/').pop()} from ${new URL(url).host}: ${err.cause?.code || err.message}`);
-      }
+async function downloadFirst(mirrors, errors) {
+  for (const url of mirrors) {
+    try {
+      return await download(url);
+    } catch (err) {
+      errors.push(`${url.split('/').pop()} from ${new URL(url).host}: ${err.cause?.code || err.message}`);
     }
   }
-  if (!groups.length) throw new Error(errors.join('; '));
-  return merge(groups);
+  return null;
+}
+
+/** Your own universe: data/my-universe.csv if present, else the bundled server/my-universe.csv. */
+export async function loadMyUniverse(dataDir) {
+  for (const file of [join(dataDir, 'my-universe.csv'), join(HERE, 'my-universe.csv')]) {
+    try {
+      const rows = parseConstituentsCsv(await readFile(file, 'utf8'));
+      if (rows.length) return rows;
+    } catch { /* try next */ }
+  }
+  return [];
+}
+
+/**
+ * Combine your list with index members; fill in names and industries.
+ * Index rows win for name/industry; the full NSE list supplies remaining names.
+ */
+export function buildUniverse(mine, indexRows, nameRows = []) {
+  const names = new Map(nameRows.map((r) => [r.symbol, r.name]));
+  const out = new Map();
+  for (const r of indexRows) out.set(r.symbol, { ...r });
+  for (const r of mine) {
+    const prev = out.get(r.symbol);
+    if (prev) { if (!prev.industry) prev.industry = r.industry; continue; }
+    out.set(r.symbol, { symbol: r.symbol, name: r.name || '', industry: r.industry || '' });
+  }
+  for (const r of out.values()) if (!r.name && names.has(r.symbol)) r.name = names.get(r.symbol);
+  return [...out.values()];
+}
+
+/** Download the lists (trying mirrors in order). Throws if nothing could be fetched. */
+export async function downloadStockLists(mine = []) {
+  const errors = [];
+  const indexRows = [];
+  for (const mirrors of INDEX_LISTS) indexRows.push(...((await downloadFirst(mirrors, errors)) || []));
+  const nameRows = (await downloadFirst(NAME_LIST, errors)) || [];
+  if (!indexRows.length && !nameRows.length) throw new Error(errors.join('; '));
+  return buildUniverse(mine, indexRows, nameRows);
 }
 
 function apply(stocks, source, updatedAt) {
@@ -108,13 +141,15 @@ function apply(stocks, source, updatedAt) {
 export async function loadStockUniverse(dataDir, { force = false, download = true } = {}) {
   const cache = new JsonStore(join(dataDir, 'stocks.json'), null);
   const cached = await cache.load();
-  const fresh = cached?.stocks?.length && Date.now() - new Date(cached.updatedAt).getTime() < MAX_AGE_MS;
+  const mine = await loadMyUniverse(dataDir);
+  const fresh = cached?.stocks?.length && cached.version === CACHE_VERSION && Date.now() - new Date(cached.updatedAt).getTime() < MAX_AGE_MS;
   if (fresh && !force) return apply(cached.stocks, cached.source, cached.updatedAt);
 
   if (download) try {
-    const stocks = await downloadStockLists();
+    const stocks = await downloadStockLists(mine);
     const updatedAt = new Date().toISOString();
-    cache.data = { updatedAt, source: 'NSE (NIFTY 500 + Microcap 250)', stocks };
+    const named = stocks.filter((s) => s.name).length;
+    cache.data = { version: CACHE_VERSION, updatedAt, source: `Your list + NIFTY 500/Microcap 250 · ${named} named`, stocks };
     await cache.flush();
     stockInfo.error = null;
     console.log(`[stocks] downloaded ${stocks.length} NSE stocks`);
@@ -124,11 +159,14 @@ export async function loadStockUniverse(dataDir, { force = false, download = tru
     console.warn(`[stocks] download failed (${err.message})`);
   }
 
-  if (cached?.stocks?.length) return apply(cached.stocks, `${cached.source} (cached)`, cached.updatedAt);
+  if (cached?.stocks?.length) return apply(buildUniverse(mine, cached.stocks), `${cached.source} (cached)`, cached.updatedAt);
+  let extra = [];
   try {
-    const rows = parseConstituentsCsv(await readFile(join(dataDir, 'stocks.csv'), 'utf8'));
-    if (rows.length) return apply(rows, 'data/stocks.csv', null);
+    extra = parseConstituentsCsv(await readFile(join(dataDir, 'stocks.csv'), 'utf8'));
   } catch { /* no local CSV */ }
+  if (mine.length || extra.length) {
+    return apply(buildUniverse(mine, extra), extra.length ? 'Your list + data/stocks.csv' : 'Your list (symbols only — names not downloaded yet)', null);
+  }
   return apply([], 'built-in list', null);
 }
 

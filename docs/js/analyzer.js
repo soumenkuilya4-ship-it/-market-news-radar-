@@ -267,6 +267,27 @@ const INDUSTRY_SUBSECTOR = {
   textiles: 'Textiles',
   'forest materials': 'Paper & Forest',
   'financial services': 'NBFC & Financials',
+  // Categories used in the RS Scanner sheet
+  'i.t': 'IT & Tech',
+  fmcg: 'FMCG & Consumer',
+  auto: 'Auto',
+  financials: 'NBFC & Financials',
+  bank: 'Banking',
+  'aerospace & defence': 'Defence',
+  industrials: 'Infra & Capital Goods',
+  'consumer discretionary': 'FMCG & Consumer',
+  'building materials': 'Infra & Capital Goods',
+  'plastic products': 'Chemicals',
+  'castings, forgings & fasteners': 'Infra & Capital Goods',
+  transportation: 'Aviation & Logistics',
+  services: 'Aviation & Logistics',
+  'telecom-service': 'Telecom & Media',
+  telecom: 'Telecom & Media',
+  media: 'Telecom & Media',
+  energy: 'Energy',
+  utilities: 'Energy',
+  'power & utilities': 'Energy',
+  'readymade garments/apparels': 'Textiles',
 };
 
 // Trailing words dropped to build a short alias ("Reliance Industries" -> "Reliance").
@@ -293,7 +314,13 @@ const SHORT_ALIAS_STOP = new Set([
 // Acronyms in capitals that are not stock symbols.
 const SYMBOL_STOP = new Set(['RBI', 'GDP', 'CPI', 'WPI', 'USD', 'INR', 'IPO', 'CEO', 'CFO', 'COO', 'FII', 'DII', 'FPI', 'GST', 'EPS',
   'NSE', 'BSE', 'SEBI', 'NIFTY', 'MCX', 'AGM', 'EGM', 'ESG', 'LTD', 'THE', 'AND', 'FOR', 'NEW', 'ONE', 'ALL', 'CAN', 'NOT',
-  'MPC', 'PMI', 'IIP', 'NPA', 'EBITDA', 'PAT', 'YOY', 'QOQ', 'USA', 'UAE', 'OPEC', 'IMF', 'WTO', 'EV', 'AI', 'IT']);
+  'MPC', 'PMI', 'IIP', 'NPA', 'EBITDA', 'PAT', 'YOY', 'QOQ', 'USA', 'UAE', 'OPEC', 'IMF', 'WTO', 'EV', 'AI', 'IT',
+  // Symbols that are ordinary English words
+  'GLOBAL', 'STAR', 'BETA', 'ACE', 'ADVANCE', 'CLEAN', 'FACT', 'OMNI', 'MARINE', 'PRIORITY', 'LANDMARK', 'WHEELS',
+  'FUSION', 'ROUTE', 'CORONA', 'CUPID', 'SIGNATURE', 'SAFARI', 'APOLLO', 'TIMEX', 'STANLEY', 'GENESYS', 'GARUDA',
+  'INA', 'AYE', 'UDS', 'SUNSHINE', 'KNACK', 'ESTER', 'RAIN', 'RAINBOW', 'PRUDENT', 'CAMPUS', 'TRENT', 'AURUM',
+  'JUNIPER', 'MARATHON', 'SATIN', 'BLS', 'OIL', 'EKC', 'WEL', 'DEEPA', 'TEGA', 'NAVA', 'ARIS', 'SAKAR',
+  'PARAS', 'ANUP', 'AMBER', 'CERA', 'TATVA', 'STYL', 'JARO', 'ERIS']);
 // Phrases that contain a listed company's name but mean something else.
 const NAME_BLOCKERS = ['reserve bank of india', 'securities and exchange board of india', 'government of india', 'president of india', 'supreme court of india'];
 
@@ -334,10 +361,11 @@ function firstWordAlias(name) {
  * @param {{symbol: string, name: string, industry?: string}[]} stocks
  */
 export function setStockUniverse(stocks) {
-  const list = (stocks || []).filter((s) => s?.symbol && s?.name);
+  const list = (stocks || []).filter((s) => s?.symbol);
   const bySymbol = new Map(list.map((s) => [s.symbol.toUpperCase(), s]));
   const owners = new Map(); // alias -> Set(symbol)
   for (const s of list) {
+    if (!s.name) continue;
     for (const a of stockAliases(s.name)) {
       if (!owners.has(a)) owners.set(a, new Set());
       owners.get(a).add(s.symbol.toUpperCase());
@@ -347,7 +375,7 @@ export function setStockUniverse(stocks) {
   for (const [a, syms] of owners) if (syms.size === 1) aliasTo.set(a, [...syms][0]);
   const firstOwners = new Map();
   for (const s of list) {
-    const w = firstWordAlias(s.name);
+    const w = s.name && firstWordAlias(s.name);
     if (!w || owners.has(w.toLowerCase())) continue;
     if (!firstOwners.has(w)) firstOwners.set(w, new Set());
     firstOwners.get(w).add(s.symbol.toUpperCase());

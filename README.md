@@ -72,14 +72,19 @@ Web Push needs **HTTPS**. `localhost` is the one exception, so it works for desk
 
 **About the feeds.** NSE and Investing.com block many non-browser and data-centre requests. The server sends browser-like headers, and for NSE it fetches session cookies first. If a feed still fails from your host, its status shows red under **Settings → Data**. You can then point that feed at a proxy with `FEED_<ID>_URL`.
 
-**Stock list.** The app recognises companies from NSE's official NIFTY 500 and NIFTY Microcap 250 lists, about 750 stocks:
+**Stock list.** The app recognises about 1,200+ stocks:
 
-- It downloads both lists from NSE in the background when it starts, saves them in `data/stocks.json`, and refreshes them weekly. Stored stories are re-tagged when the list changes.
-- It matches each company by its full name (e.g. "Dixon Technologies"), a distinctive short name (e.g. "Suzlon" or "Polycab"), or its NSE symbol in capitals (e.g. "IRCTC").
-- When the industry keywords don't give a clear sector, the company's NSE industry sets the sub-sector.
-- If NSE can't be reached, it uses the last saved copy, or a `data/stocks.csv` you provide (same columns as NSE's index files: Company Name, Industry, Symbol). If neither exists, it uses the built-in list of 65.
-- **Settings → Data → Stock list** shows which list is in use.
-- `STOCK_LIST_URLS` (comma-separated) overrides the download links.
+- **Your universe:** the 1,171 symbols from the RS Scanner tab of your RS Model sheet, bundled as `server/my-universe.csv`. To update it, export the tab's Symbol and Industry columns as CSV and save it as `data/my-universe.csv`, which overrides the bundled copy.
+- **NSE index lists:** NIFTY 500 and NIFTY Microcap 250 members are added on top of your universe.
+- **Company names:** come from NSE's index files and its full equity list (`EQUITY_L.csv`).
+
+How it loads and matches:
+- It downloads the NSE files in the background, caches the result in `data/stocks.json`, and refreshes it weekly. Stored stories are re-tagged when the list changes.
+- It matches each company by its full name (e.g. "Dixon Technologies"), a distinctive short name (e.g. "Suzlon", "Tips Music"), or its NSE symbol in capitals (e.g. "IRCTC", "KROSS").
+- When the industry keywords don't give a clear sector, the company's industry sets the sub-sector.
+- If NSE can't be reached, it uses the last saved copy. With no saved copy, it uses your universe with symbols only, plus any `data/stocks.csv` you provide (columns: Company Name, Industry, Symbol).
+- **Settings → Data → Stock list** shows what is loaded.
+- `STOCK_LIST_URLS` (comma-separated) overrides the index-list download links.
 
 **Claude cost.** Claude analyses at most 25 new items per poll, one at a time, at low effort. To use a cheaper model, set `AI_MODEL`.
 

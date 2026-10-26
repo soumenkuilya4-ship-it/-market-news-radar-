@@ -57,3 +57,31 @@ test('recognises a distinctive first word only when capitalised', () => {
   assert.ok(analyzeArticle({ title: 'Tata Power commissions solar plant', description: '' }).instruments.includes('TATAPOWER'));
   assert.ok(!analyzeArticle({ title: 'dixon is a surname here', description: '' }).instruments.includes('DIXON'));
 });
+
+test('loads the bundled RS Scanner universe', async () => {
+  const { loadMyUniverse } = await import('../server/stocks.js');
+  const mine = await loadMyUniverse('/nonexistent');
+  assert.equal(mine.length, 1171);
+  assert.deepEqual(mine.find((r) => r.symbol === 'KROSS'), { symbol: 'KROSS', name: '', industry: 'auto' });
+});
+
+test('names your symbols from the NSE equity list without adding other companies', async () => {
+  const { buildUniverse } = await import('../server/stocks.js');
+  const nameRows = parseConstituentsCsv(readFileSync(new URL('./fixtures/equity_l_sample.csv', import.meta.url), 'utf8'));
+  assert.equal(nameRows.length, 4);
+  const mine = [{ symbol: 'KROSS', name: '', industry: 'auto' }, { symbol: 'TIPSMUSIC', name: '', industry: 'media' }];
+  const uni = buildUniverse(mine, rows, nameRows);
+  assert.equal(uni.find((r) => r.symbol === 'KROSS').name, 'Kross Limited');
+  assert.ok(!uni.some((r) => r.symbol === 'ZZZNOTMINE'));
+  assert.equal(uni.length, rows.length + 2);
+  setStockUniverse(uni);
+  const a = analyzeArticle({ title: 'Tips Music signs licensing deal with global streaming platform', description: '' });
+  assert.ok(a.instruments.includes('TIPSMUSIC'));
+  assert.equal(a.subSector, 'Telecom & Media');
+});
+
+test('symbols without names still match in capitals', () => {
+  setStockUniverse([{ symbol: 'KROSS', name: '', industry: 'auto' }, { symbol: 'GLOBAL', name: '', industry: 'services' }]);
+  assert.ok(analyzeArticle({ title: 'KROSS bags axle order from Tata', description: '' }).instruments.includes('KROSS'));
+  assert.ok(!analyzeArticle({ title: 'GLOBAL markets slide', description: '' }).instruments.includes('GLOBAL'));
+});
