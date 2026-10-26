@@ -1,5 +1,5 @@
 // Market Radar service worker: offline app shell, news caching and Web Push alerts.
-const VERSION = 'mr-v1';
+const VERSION = 'mr-v2';
 const SHELL = [
   './',
   './index.html',
@@ -50,19 +50,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App shell: stale-while-revalidate.
+  // App shell: network first so updates show immediately; the cache is the offline fallback.
   event.respondWith((async () => {
     const cache = await caches.open(VERSION);
-    const cached = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
-    const network = fetch(req).then((res) => {
+    try {
+      const res = await fetch(req); // the server marks HTML, JS and CSS no-cache, so this revalidates
       if (res.ok) cache.put(req.mode === 'navigate' ? './' : req, res.clone());
       return res;
-    }).catch(() => null);
-    if (cached) {
-      event.waitUntil(network);
-      return cached;
+    } catch {
+      const cached = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
+      return cached || (req.mode === 'navigate' ? (await cache.match('./')) || Response.error() : Response.error());
     }
-    return (await network) || (req.mode === 'navigate' ? cache.match('./') : Response.error());
   })());
 });
 
